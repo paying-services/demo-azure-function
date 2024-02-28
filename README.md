@@ -1,4 +1,4 @@
-#demo
+#definition of problem
 
 before start read this docs
 
@@ -6,18 +6,197 @@ https://learn.microsoft.com/en-us/azure/logic-apps/logic-apps-securing-a-logic-a
 
 ![alt text](image.png)
 
-built int connector for function app from logic app doesnt support authentication so in our case we can do something like this
+built int connector for function app on logic app doesnt support authentication so in our case we can do something like this
 
-* request a token from entra id  endpoint
-* create a task with a post request
-* parse the response from entra id 
-* put the acces_token in authorization bearer header in the post
+# how to fix it 
+
+* request a token from entra id  endpoint manually
+* parse the json response from entra id 
+* create a task with a post request to query the azure fucntion  put the acces_token in authorization bearer header
+
+which inherit that credentials required to be obtained from key vault , this step is also explained below 
+
+```
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Execute_query_1": {
+                "inputs": {
+                    "parameters": {
+                        "query": "SELECT TOP (1000) * FROM [dbo].[BuildVersion]"
+                    },
+                    "serviceProviderConfiguration": {
+                        "connectionName": "sql",
+                        "operationId": "executeQuery",
+                        "serviceProviderId": "/serviceProviders/sql"
+                    }
+                },
+                "runAfter": {},
+                "type": "ServiceProvider"
+            },
+            "Get_clientid": {
+                "inputs": {
+                    "parameters": {
+                        "secretName": "clientid"
+                    },
+                    "serviceProviderConfiguration": {
+                        "connectionName": "keyVault",
+                        "operationId": "getSecret",
+                        "serviceProviderId": "/serviceProviders/keyVault"
+                    }
+                },
+                "runAfter": {
+                    "Execute_query_1": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "ServiceProvider"
+            },
+            "Get_secret_1": {
+                "inputs": {
+                    "parameters": {
+                        "secretName": "clientsecret"
+                    },
+                    "serviceProviderConfiguration": {
+                        "connectionName": "keyVault",
+                        "operationId": "getSecret",
+                        "serviceProviderId": "/serviceProviders/keyVault"
+                    }
+                },
+                "runAfter": {
+                    "Get_clientid": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "ServiceProvider"
+            },
+            "get_access_token": {
+                "inputs": {
+                    "body": "\nclient_id=@{body('Get_clientid')?['value']}\n&resource=api://b1a17dfd-e3ca-40b6-96f6-f3cfca07f56a\n&client_secret=@{body('Get_secret_1')?['value']}\n&grant_type=client_credentials",
+                    "headers": {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    "method": "POST",
+                    "uri": "https://login.microsoftonline.com/18b08011-0a66-4da0-97f0-cc3e9571c9e9/oauth2/token"
+                },
+                "runAfter": {
+                    "Get_secret_1": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                },
+                "type": "Http"
+            },
+            "parse_access_token_response": {
+                "inputs": {
+                    "content": "@body('get_access_token')",
+                    "schema": {
+                        "properties": {
+                            "access_token": {
+                                "type": "string"
+                            },
+                            "expires_in": {
+                                "type": "string"
+                            },
+                            "expires_on": {
+                                "type": "string"
+                            },
+                            "ext_expires_in": {
+                                "type": "string"
+                            },
+                            "not_before": {
+                                "type": "string"
+                            },
+                            "resource": {
+                                "type": "string"
+                            },
+                            "token_type": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "runAfter": {
+                    "get_access_token": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "type": "ParseJson"
+            },
+            "query_function_with_access_token": {
+                "inputs": {
+                    "authentication": {
+                        "type": "Raw",
+                        "value": "Bearer @{body('parse_access_token_response')?['access_token']}"
+                    },
+                    "method": "GET",
+                    "uri": "https://functionappdemogabo.azurewebsites.net/api/HttpTrigger1?"
+                },
+                "runAfter": {
+                    "parse_access_token_response": [
+                        "SUCCEEDED"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "contentTransfer": {
+                        "transferMode": "Chunked"
+                    }
+                },
+                "type": "Http"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "When_a_HTTP_request_is_received": {
+                "kind": "Http",
+                "type": "Request"
+            }
+        }
+    },
+    "kind": "Stateful"
+}
+```
 
 
+#image of each step 
 
-* enable authentication in the azure function paired with a app reg/entrerprise app
+![alt text](image-8.png)
+
+![alt text](image-9.png)
+
+![alt text](image-10.png)
+
+![alt text](image-11.png)
+
+![alt text](image-12.png)
+
+#pre requisites
+
+this idea also require to
+
+* enable authentication in the azure function paired with a app reg/entrerprise app so the entra id is done when we try to enter to the azure fucntion, no custom configuration is done on here
 
 ![alt text](image-7.png)
+
+if we dont want to enable this, the other solution is to enable the authentication at the code being deployed on the azure fucntion by using defaultazurecrednetials() impersonated with the resource identity, refer to this code block on (HttpTrigger1.cs) 
+
+```
+[Function("HttpTrigger1")]
+public IActionResult Run([HttpTrigger(AuthorizationLevel.Anonymous, "get", "post")] HttpRequest req)
+{
+    _logger.LogInformation("C# HTTP trigger function processed a request.");
+    return new OkObjectResult("Welcome to Azure Functions!");
+}
+```
+
+![alt text](image-13.png)
 
 
 * create a random role in the app reg refered line above
@@ -43,13 +222,16 @@ az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$oidForMI/
 
 
 
+# the way to acces tojenby post is shown on here
 
 https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#get-a-token
 
-* enSure that logic have key vault secret user in logic app´
+
+# they way to integrate keyvault with logic app is on here 
+
+* ensure that logic have key vault secret user in logic app´
 
 ![alt text](image-1.png)
-
 
 add your secret in key vault 
 
@@ -58,14 +240,3 @@ add your secret in key vault
 dont forget to add yourself to the rbac so you can add them 
 
 ![alt text](image-3.png)
-
-
-{
-  "token_type": "Bearer",
-  "expires_in": "3599",
-  "ext_expires_in": "3599",
-  "expires_on": "1709166209",
-  "not_before": "1709162309",
-  "resource": "00000002-0000-0000-c000-000000000000",
-  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IlhSdmtvOFA3QTNVYVdTblU3Yk05blQwTWpoQSIsImtpZCI6IlhSdmtvOFA3QTNVYVdTblU3Yk05blQwTWpoQSJ9.eyJhdWQiOiIwMDAwMDAwMi0wMDAwLTAwMDAtYzAwMC0wMDAwMDAwMDAwMDAiLCJpc3MiOiJodHRwczovL3N0cy53aW5kb3dzLm5ldC8xOGIwODAxMS0wYTY2LTRkYTAtOTdmMC1jYzNlOTU3MWM5ZTkvIiwiaWF0IjoxNzA5MTYyMzA5LCJuYmYiOjE3MDkxNjIzMDksImV4cCI6MTcwOTE2NjIwOSwiYWlvIjoiRTJOZ1lGalh2MEJyMXF1YUcwTHY1NnFMRnMzWkJ3QT0iLCJhcHBpZCI6ImIxYTE3ZGZkLWUzY2EtNDBiNi05NmY2LWYzY2ZjYTA3ZjU2YSIsImFwcGlkYWNyIjoiMSIsImlkcCI6Imh0dHBzOi8vc3RzLndpbmRvd3MubmV0LzE4YjA4MDExLTBhNjYtNGRhMC05N2YwLWNjM2U5NTcxYzllOS8iLCJvaWQiOiIwMzg2ZjkwYS0wYmY1LTQ4ZjYtYmIyOS0zMTE4YWQ0YzZiNTEiLCJyaCI6IjAuQVZvQUVZQ3dHR1lLb0UyWDhNdy1sWEhKNlFJQUFBQUFBQUFBd0FBQUFBQUFBQUJhQUFBLiIsInN1YiI6IjAzODZmOTBhLTBiZjUtNDhmNi1iYjI5LTMxMThhZDRjNmI1MSIsInRlbmFudF9yZWdpb25fc2NvcGUiOiJTQSIsInRpZCI6IjE4YjA4MDExLTBhNjYtNGRhMC05N2YwLWNjM2U5NTcxYzllOSIsInV0aSI6Im9KRjBWYlZWQkVpc1ZQQU9zRk1sQUEiLCJ2ZXIiOiIxLjAifQ.PiYj0UIruZViiFNprchWQFzTQic-Un1lilIcoOvdKFu_k2Zi4HEW30sbgRjKxNuiWzYGYDss-V0IwbfwOa6SmakJxjMDwJhuOPMNa2LLmDsKWYeMzhgONXcIcpodL3LtM6l8RW5eufVIoJYlAk42mvowKV2Sw7u-jyejWbsNAaGzV3BSfqKxTs-WuNrwgG4nYCKAhfOiaRcG1TaxcvoXnHcDuH_iccQhXQd3SPAHn_Oz6Pj4bXZW_3E2DJMNK1QZO8Ebu1wa5fWrzKYsP6FgXJ2mM9gyJwyBWAaxNtXBX7YDlFJMRFhQdA7ATJIh5B9OuVfuuBLhQeLqILYMAY3rEQ"
-}

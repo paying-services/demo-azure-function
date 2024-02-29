@@ -8,11 +8,14 @@ https://learn.microsoft.com/en-us/azure/logic-apps/logic-apps-securing-a-logic-a
 
 built int connector for function app on logic app doesnt support authentication so in our case we can do something like this
 
+# tips: we can also just create the post request block without authorization so we can skip most of this guide 
+
 # how to fix it 
 
 * request a token from entra id  endpoint manually
 * parse the json response from entra id 
 * create a task with a post request to query the azure fucntion  put the acces_token in authorization bearer header
+
 
 which inherit that credentials required to be obtained from key vault , this step is also explained below 
 

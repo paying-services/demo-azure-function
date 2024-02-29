@@ -1,4 +1,4 @@
-#definition of problem
+# definition of problem
 
 before start read this docs
 
@@ -165,7 +165,7 @@ which inherit that credentials required to be obtained from key vault , this ste
 ```
 
 
-#image of each step 
+# image of each step 
 
 ![alt text](image-8.png)
 
@@ -177,15 +177,15 @@ which inherit that credentials required to be obtained from key vault , this ste
 
 ![alt text](image-12.png)
 
-#pre requisites
+# pre requisites
 
 this idea also require to
 
-* enable authentication in the azure function paired with a app reg/entrerprise app so the entra id is done when we try to enter to the azure fucntion, no custom configuration is done on here
+* enable authentication in the azure function paired with a app reg/entrerprise app so the entra id auth is done when we try to enter to the azure fucntion, no custom configuration is done on here , by just enable work well
 
 ![alt text](image-7.png)
 
-if we dont want to enable this, the other solution is to enable the authentication at the code being deployed on the azure fucntion by using defaultazurecrednetials() impersonated with the resource identity, refer to this code block on (HttpTrigger1.cs) 
+if we dont want to enable this, the other solution is to enable the authentication at the code level being deployed on the azure fucntion by using defaultazurecrednetials() impersonated with the resource identity, refer to this code block on (HttpTrigger1.cs) 
 
 ```
 [Function("HttpTrigger1")]
@@ -222,7 +222,7 @@ az rest -m POST -u https://graph.microsoft.com/v1.0/servicePrincipals/$oidForMI/
 
 
 
-# the way to acces tojenby post is shown on here
+# the way to get a access token by post is shown on here (theoric info) this is used inside the logic app subtask
 
 https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow#get-a-token
 
